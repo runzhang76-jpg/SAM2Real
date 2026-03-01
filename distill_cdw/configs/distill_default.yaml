@@ -1,0 +1,206 @@
+experiment:
+  name: distill_default
+  output_dir: outputs/distill_default
+  seed: 42
+  device: auto
+  amp: false
+
+data:
+  teacher:
+    source: images  # images 或 coco
+    root_dir:
+    images_dir: images_test
+    gt_json: "annotations/instances_test.json"  # source=coco 时使用
+    batch_size: 1
+    num_workers: 0
+    shuffle: false
+    allow_empty: false
+  train:  # student 
+    source: offline
+    root_dir: ../data/sam2/dataset/segment_cdw_coco_sub_dataset/
+    images_dir: images_test
+    annotations_dir: annotations
+    pseudolabel_path: pseudolabels/pseudolabels.json
+    batch_size: 1
+    num_workers: 0
+    shuffle: true
+    allow_empty: false
+    fallback_to_dummy: true
+    dummy:
+      num_images: 8
+      image_size: [256, 256]
+      num_instances: 1
+    transforms:
+      to_float: true
+      resize: [640, 640]
+      flip_prob: 0.5
+      mean: [0.485, 0.456, 0.406]
+      std: [0.229, 0.224, 0.225]
+  eval:
+    enabled: true
+    root_dir:
+    images_dir: images_val
+    gt_json: annotations/instances_val.json
+    allow_empty: false
+    batch_size: 1
+    num_workers: 0
+    transforms:
+      to_float: true
+      resize: null  # 评估默认不缩放，避免坐标不一致
+      mean: [0.485, 0.456, 0.406]
+      std: [0.229, 0.224, 0.225]
+    coco:
+      enabled: false
+      iou_types: [segm]
+    calibration:
+      enabled: true
+  test:
+    enabled: false
+    root_dir: ""
+    images_dir: images_test
+    gt_json: ""
+    allow_empty: false
+    batch_size: 1
+    num_workers: 0
+    transforms:
+      to_float: true
+      resize: null
+      mean: [0.485, 0.456, 0.406]
+      std: [0.229, 0.224, 0.225]
+    coco:
+      enabled: false
+      iou_types: [segm]
+  remote:
+    enabled: false
+    provider: swanlab
+    remote_uri: ""
+    local_cache_dir: data/cache/distill
+    sync_mode: down
+    version: ""
+
+teacher:
+  mode: offline
+  segment_cdw:
+    enabled: false
+    module: segment_cdw.run_eval
+    callable: run_inference
+    kwargs: {}
+  sam2:
+    config_file: configs/sam2.1/sam2.1_hiera_t.yaml
+    ckpt_path: checkpoints/sam2.1_hiera_tiny.pt
+    device: mps
+    model_type: ""
+    points_per_side: 24
+    points_per_batch: 16
+    pred_iou_thresh: 0.6
+    stability_thresh: 0.7
+    stability_score_offset: 1.0
+    mask_threshold: 0.0
+    box_nms_thresh: 0.7
+    crop_n_layers: 0
+    crop_nms_thresh: 0.7
+    crop_overlap_ratio: 0.34
+    crop_n_points_downscale_factor: 1
+    min_mask_region_area: 0
+    multimask_output: true
+    output_mode: binary_mask
+    img_downsample: true  # 图像进入 SAM 前下采样
+    img_downsample_factor: 4.0
+  postprocess:
+    enabled: true
+    runtime:
+      use_torch: false
+      device: auto
+      topk_pre: 0
+      torch_fp16: false
+      torch_nms: false
+      topk_nms: 0
+      log_stats: false
+    steps:
+      - name: quality_filter
+        enabled: true
+        min_area: 1000
+        max_area_frac: 0.2
+        min_score: 0.0
+        min_pred_iou: null
+        min_stability: null
+        min_bbox_side: 20
+        max_aspect_ratio: 8.0
+        min_compactness: 0.005
+      - name: nms
+        enabled: true
+        method: mask
+        iou_thresh: 0.85
+  classifier:
+    enabled: true
+    backend: segment_cdw
+    checkpoint: "segment_cdw/reseresnext50_32x4d_0_6epochs_accuracy0.817_weights.pth"
+    num_classes: 4
+    score_threshold: 0.0
+    device: auto
+    patch_size: 224
+    margin_ratio: 0.1 # 提取patch时候的外扩宽度
+    batch_size: 16
+    combine_score: mul # 是否与mask分数进行整合
+    use_gpu_crop: false
+    category_map: {
+                  0:'crushed_stone',
+                  1:'brick',
+                  2:'concrete',
+                  3:'ceramic',
+                  }
+  reliability:
+    enabled: true
+    min_score: 0.0
+    max_score: 1.0
+
+student:
+  name: yolov8s_seg
+  backend: ultralytics
+  weights: yolov8s-seg.pt
+  num_classes: 4
+  in_channels: 3
+  device: auto
+  params:
+    imgsz: 640
+    conf: 0.25
+    iou: 0.7
+
+loss:
+  mask:
+    type: bce
+    weight: 1.0
+  dice:
+    weight: 1.0
+  kl:
+    weight: 0.0
+  reliability:
+    enabled: true
+    gamma: 1.0
+  distill:
+    alpha: 1.0
+    mask_kl_weight: 0.0
+    cls_kl_weight: 0.0
+    bbox_l1_weight: 0.0
+    feat_l2_weight: 0.0
+
+optim:
+  type: adamw
+  lr: 0.0001
+  weight_decay: 0.01
+
+trainer:
+  max_epochs: 1
+  log_every: 5
+  eval_every: 1
+  save_every: 1
+  grad_accum: 1
+  clip_grad_norm: 0.0
+
+logging:
+  level: INFO
+  tensorboard:
+    enabled: false
+    log_dir: ""
+  wandb:
+    enabled: false
