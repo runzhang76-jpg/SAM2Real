@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """蒸馏训练主入口。"""
-
+# test
 from __future__ import annotations
 
 import argparse
