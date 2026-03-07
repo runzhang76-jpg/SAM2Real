@@ -26,3 +26,4 @@ demo/data/
 demo/frontend/src/assets/videos/
 notebooks/videos/
 sav_dataset/example/
+distill_cdw/distill/teacher/database_knn.csv
