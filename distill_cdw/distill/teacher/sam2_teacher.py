@@ -16,11 +16,13 @@ from distill.teacher.postprocess import (
     RawMaskPrediction,
     convert_instances,
 )
+from distill.teacher.prompt_generators import build_prompt_generator
 from distill.teacher.reliability import compute_reliability
 from distill.utils.logging import get_logger
 
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 from sam2.build_sam import build_sam2
+from sam2.sam2_image_predictor import SAM2ImagePredictor
 
 
 try:
@@ -121,14 +123,18 @@ class SegmentCDWAdapter:
 class SegmentCDWRunEvalAdapter:
     """ SAM2 适配器。"""
 
-    def __init__(self, cfg: Dict[str, Any], device: str ) -> None:
+    def __init__(self, cfg: Dict[str, Any], device: str, prompt_cfg: Optional[Dict[str, Any]] = None) -> None:
         self.cfg = cfg
         self.device = cfg.get('device')
         self.logger = get_logger("distill")
         self.sam_model = None
         self.mask_gen = None
+        self.mask_predictor = None
         self.img_downsample = bool(cfg.get("img_downsample", True))
         self.img_downsample_factor = float(cfg.get("img_downsample_factor", 4.0))
+        self.prompt_cfg = prompt_cfg or {"type": "sam2_auto"}
+        self.prompt_generator = build_prompt_generator(self.prompt_cfg)
+        self.prompt_type = str(self.prompt_cfg.get("type", "sam2_auto")).lower()
         self._build_generator()
 
     def _build_generator(self) -> None:
@@ -143,58 +149,145 @@ class SegmentCDWRunEvalAdapter:
             device=self.device,
         )
 
-        self.mask_gen = SAM2AutomaticMaskGenerator(
-            self.sam_model,
-            points_per_side=int(self.cfg.get("points_per_side", 24)),
-            points_per_batch=int(self.cfg.get("points_per_batch", 16)),
-            pred_iou_thresh=float(self.cfg.get("pred_iou_thresh", 0.6)),
-            stability_score_thresh=float(self.cfg.get("stability_thresh", 0.7)),
-            stability_score_offset=float(self.cfg.get("stability_score_offset", 1.0)),
-            mask_threshold=float(self.cfg.get("mask_threshold", 0.0)),
-            box_nms_thresh=float(self.cfg.get("box_nms_thresh", 0.7)),
-            crop_n_layers=int(self.cfg.get("crop_n_layers", 0)),
-            crop_nms_thresh=float(self.cfg.get("crop_nms_thresh", 0.7)),
-            crop_overlap_ratio=float(self.cfg.get("crop_overlap_ratio", 0.34)),
-            crop_n_points_downscale_factor=int(self.cfg.get("crop_n_points_downscale_factor", 1)),
-            min_mask_region_area=int(self.cfg.get("min_mask_region_area", 0)),
-            output_mode=str(self.cfg.get("output_mode", "binary_mask")),
-            multimask_output=bool(self.cfg.get("multimask_output", True)),
+        if self.prompt_type == "sam2_auto":
+            self.mask_gen = SAM2AutomaticMaskGenerator(
+                self.sam_model,
+                points_per_side=int(self.cfg.get("points_per_side", 24)),
+                points_per_batch=int(self.cfg.get("points_per_batch", 16)),
+                pred_iou_thresh=float(self.cfg.get("pred_iou_thresh", 0.6)),
+                stability_score_thresh=float(self.cfg.get("stability_thresh", 0.7)),
+                stability_score_offset=float(self.cfg.get("stability_score_offset", 1.0)),
+                mask_threshold=float(self.cfg.get("mask_threshold", 0.0)),
+                box_nms_thresh=float(self.cfg.get("box_nms_thresh", 0.7)),
+                crop_n_layers=int(self.cfg.get("crop_n_layers", 0)),
+                crop_nms_thresh=float(self.cfg.get("crop_nms_thresh", 0.7)),
+                crop_overlap_ratio=float(self.cfg.get("crop_overlap_ratio", 0.34)),
+                crop_n_points_downscale_factor=int(self.cfg.get("crop_n_points_downscale_factor", 1)),
+                min_mask_region_area=int(self.cfg.get("min_mask_region_area", 0)),
+                output_mode=str(self.cfg.get("output_mode", "binary_mask")),
+                multimask_output=bool(self.cfg.get("multimask_output", True)),
+            )
+            self.logger.info("SAM2 built with prompt_generator=sam2_auto: %s", config_file)
+        elif self.prompt_type in {"canny_boxes", "watershed_boxes", "lab_cc_boxes"}:
+            self.mask_predictor = SAM2ImagePredictor(
+                self.sam_model,
+                mask_threshold=float(self.cfg.get("mask_threshold", 0.0)),
+            )
+            if self.img_downsample and self.img_downsample_factor > 1.0:
+                self.logger.warning(
+                    "prompt_generator=canny_boxes currently runs on original image scale; "
+                    "sam2.img_downsample is ignored in this mode."
+                )
+            if hasattr(self.prompt_generator, "max_prompts_per_image"):
+                self.logger.info(
+                    "SAM2 built with prompt_generator=%s (max_prompts_per_image=%d)",
+                    self.prompt_type,
+                    int(getattr(self.prompt_generator, "max_prompts_per_image", -1)),
+                )
+            else:
+                self.logger.info("SAM2 built with prompt_generator=%s", self.prompt_type)
+        else:
+            raise ValueError(f"Unsupported prompt_generator.type: {self.prompt_type}")
+
+    @staticmethod
+    def _xyxy_to_xywh(box_xyxy: np.ndarray) -> List[float]:
+        x0, y0, x1, y1 = [float(v) for v in box_xyxy.tolist()]
+        return [x0, y0, max(0.0, x1 - x0), max(0.0, y1 - y0)]
+
+    def _predict_from_boxes(self, img_np: np.ndarray, meta: Dict[str, Any]) -> List[RawMaskPrediction]:
+        if self.mask_predictor is None:
+            raise RuntimeError("SAM2 image predictor is not initialized")
+        boxes_xyxy = self.prompt_generator.generate_boxes(img_np, image_meta=meta)
+        if boxes_xyxy.shape[0] == 0:
+            return []
+
+        self.mask_predictor.set_image(img_np)
+        multimask_output = bool(self.cfg.get("box_prompt_multimask_output", False))
+        masks, ious, _ = self.mask_predictor.predict(
+            box=boxes_xyxy,
+            multimask_output=multimask_output,
+            normalize_coords=True,
         )
 
-        self.logger.info("SAM2 已构建: %s", config_file)
+        pred_items: List[RawMaskPrediction] = []
+        masks_arr = np.asarray(masks)
+        ious_arr = np.asarray(ious)
+
+        if masks_arr.ndim == 4:
+            # BxCxHxW, keep highest IoU candidate per prompt box.
+            for bi in range(masks_arr.shape[0]):
+                iou_vec = ious_arr[bi] if ious_arr.ndim == 2 else ious_arr
+                best_ci = int(np.argmax(iou_vec))
+                mask = masks_arr[bi, best_ci]
+                score = float(iou_vec[best_ci])
+                pred_items.append(
+                    {
+                        "segmentation": mask.astype(bool),
+                        "predicted_iou": score,
+                        "stability_score": 1.0,
+                        "bbox": self._xyxy_to_xywh(boxes_xyxy[bi]),
+                        "prompt_box": boxes_xyxy[bi].tolist(),
+                        "area": int(np.asarray(mask, dtype=np.uint8).sum()),
+                    }
+                )
+        elif masks_arr.ndim == 3:
+            # CxHxW for single prompt; keep highest IoU candidate.
+            iou_vec = ious_arr.reshape(-1)
+            best_ci = int(np.argmax(iou_vec))
+            mask = masks_arr[best_ci]
+            score = float(iou_vec[best_ci])
+            pred_items.append(
+                {
+                    "segmentation": mask.astype(bool),
+                    "predicted_iou": score,
+                    "stability_score": 1.0,
+                    "bbox": self._xyxy_to_xywh(boxes_xyxy[0]),
+                    "prompt_box": boxes_xyxy[0].tolist(),
+                    "area": int(np.asarray(mask, dtype=np.uint8).sum()),
+                }
+            )
+        else:
+            self.logger.warning("Unexpected mask shape from SAM2 predictor: %s", str(masks_arr.shape))
+            return []
+
+        return pred_items
 
     def generate(self, images: List[np.ndarray], metas: List[Dict[str, Any]]) -> List[List[RawMaskPrediction]]:
-        if self.mask_gen is None:
-            raise RuntimeError("SAM2 mask generator 未初始化")
+        if self.prompt_type == "sam2_auto" and self.mask_gen is None:
+            raise RuntimeError("SAM2 mask generator is not initialized")
+        if self.prompt_type in {"canny_boxes", "watershed_boxes", "lab_cc_boxes"} and self.mask_predictor is None:
+            raise RuntimeError("SAM2 image predictor is not initialized")
 
         outputs: List[List[RawMaskPrediction]] = []
         for img_np, meta in zip(images, metas):
             orig_h, orig_w = img_np.shape[:2]
-            sam_img = img_np
+            if self.prompt_type == "sam2_auto":
+                sam_img = img_np
+                if self.img_downsample and self.img_downsample_factor > 1.0:
+                    new_w = max(1, int(orig_w / self.img_downsample_factor))
+                    new_h = max(1, int(orig_h / self.img_downsample_factor))
+                    sam_img = _resize_image(img_np, (new_w, new_h), resample="bilinear")
 
-            if self.img_downsample and self.img_downsample_factor > 1.0:
-                new_w = max(1, int(orig_w / self.img_downsample_factor))
-                new_h = max(1, int(orig_h / self.img_downsample_factor))
-                sam_img = _resize_image(img_np, (new_w, new_h), resample="bilinear")
+                pred_items = self.mask_gen.generate(sam_img)
 
-            pred_items = self.mask_gen.generate(sam_img)
-
-            if self.img_downsample and self.img_downsample_factor > 1.0:
-                resized_items: List[RawMaskPrediction] = []
-                for item in pred_items:
-                    seg = item.get("segmentation", item.get("mask", None))
-                    if seg is None:
-                        resized_items.append(item)
-                        continue
-                    seg_img = _resize_image(
-                        (np.asarray(seg, dtype=np.uint8) * 255),
-                        (orig_w, orig_h),
-                        resample="nearest",
-                    )
-                    new_item = dict(item)
-                    new_item["segmentation"] = np.array(seg_img, copy=False) > 127
-                    resized_items.append(new_item)
-                pred_items = resized_items
+                if self.img_downsample and self.img_downsample_factor > 1.0:
+                    resized_items: List[RawMaskPrediction] = []
+                    for item in pred_items:
+                        seg = item.get("segmentation", item.get("mask", None))
+                        if seg is None:
+                            resized_items.append(item)
+                            continue
+                        seg_img = _resize_image(
+                            (np.asarray(seg, dtype=np.uint8) * 255),
+                            (orig_w, orig_h),
+                            resample="nearest",
+                        )
+                        new_item = dict(item)
+                        new_item["segmentation"] = np.array(seg_img, copy=False) > 127
+                        resized_items.append(new_item)
+                    pred_items = resized_items
+            else:
+                pred_items = self._predict_from_boxes(img_np, meta)
 
             outputs.append(pred_items)
 
@@ -213,6 +306,7 @@ class SAM2Teacher:
         self.post_cfg = cfg.get("sam2", {}).get("postprocess", {})
         seg_cfg = cfg.get("segment_cdw", {})
         sam_cfg = cfg.get("sam2", {})
+        prompt_cfg = cfg.get("prompt_generator", {"type": "sam2_auto"})
 
         # 定义SAM2适配器
         if seg_cfg.get("enabled", False):
@@ -222,13 +316,13 @@ class SAM2Teacher:
                 adapter = SegmentCDWAdapter(module=module, callable_name=callable_name, kwargs=seg_cfg.get("kwargs", {}))
                 if adapter._callable is None:
                     self.logger.warning("segment_cdw callable 不可用，回退到 run_eval 适配器")
-                    self.adapter = SegmentCDWRunEvalAdapter(cfg=sam_cfg, device=self.device)
+                    self.adapter = SegmentCDWRunEvalAdapter(cfg=sam_cfg, device=self.device, prompt_cfg=prompt_cfg)
                 else:
                     self.adapter = adapter
             else:
-                self.adapter = SegmentCDWRunEvalAdapter(cfg=sam_cfg, device=self.device)
+                self.adapter = SegmentCDWRunEvalAdapter(cfg=sam_cfg, device=self.device, prompt_cfg=prompt_cfg)
         elif sam_cfg:
-            self.adapter = SegmentCDWRunEvalAdapter(cfg=sam_cfg, device=self.device)
+            self.adapter = SegmentCDWRunEvalAdapter(cfg=sam_cfg, device=self.device, prompt_cfg=prompt_cfg)
 
         # 定义后处理适配器
         pp_cfg = cfg.get("postprocess", {})
@@ -240,7 +334,11 @@ class SAM2Teacher:
         # 定义分类器
         cls_cfg = cfg.get("classifier", {})
         if cls_cfg.get("enabled", False):
-            self.classifier = ClassifierAdapter(cls_cfg)
+            merged_cls_cfg = dict(cls_cfg)
+            crop_cfg = pp_cfg.get("instance_crop", {})
+            if crop_cfg and "crop" not in merged_cls_cfg:
+                merged_cls_cfg["crop"] = crop_cfg
+            self.classifier = ClassifierAdapter(merged_cls_cfg)
 
     def generate(
         self,
@@ -294,7 +392,10 @@ class SAM2Teacher:
             print(f"后处理用时: {(t3 - t2) * 1000:.2f} ms")
             # 分类
             if self.classifier is not None:
+                t4 = time.perf_counter()
                 processed = self.classifier.classify(processed, image_np=images_np[idx])
+                t5 = time.perf_counter()
+                print(f"分类用时: {(t5 - t4) * 1000:.2f} ms")
             # 可靠性计算
             for inst in processed:
                 inst.reliability = compute_reliability(inst)

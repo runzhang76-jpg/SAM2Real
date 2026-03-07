@@ -52,10 +52,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-results", default="", help="Output COCO results JSON path")
     parser.add_argument("--limit", type=int, default=-1, help="Limit number of images")
     parser.add_argument("--coco-gt", 
-                        default="../data/sam2/dataset/segment_cdw_coco_dataset/annotations/instances_train.json", 
+                        default="../data/cdw_classify/subtest/instances_Subtest.json", 
                         help="COCO GT JSON path (override config)")
     parser.add_argument("--images-root", 
-                        default="../data/sam2/dataset/segment_cdw_coco_dataset/images_train", 
+                        default="../data/cdw_classify/subtest/test", 
                         help="Images root dir (override config)")
     parser.add_argument("--use-folder", action="store_true", help="Read images from folder instead of COCO")
     parser.add_argument("--encode-workers", type=int, default=0, help="ProcessPool workers for RLE encode")
