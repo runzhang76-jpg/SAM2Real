@@ -32,12 +32,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="COCO eval for pseudolabels")
     parser.add_argument(
         "--pred",
-        default="../data/cdw_classify/subtest/pseudolabels_results.json",
+        default="../data/cdw_classify/dataset_seg/pseudolabels/pseudolabels_results.json",
         help="COCO results JSON path",
     )
     parser.add_argument(
         "--gt",
-        default="../data/cdw_classify/subtest/instances_Subtest.json",
+        default="../data/cdw_classify/dataset_seg/annotations/instances_test.json",
         help="COCO GT JSON path",
     )
     parser.add_argument("--iou-type", default="segm", help="segm or bbox")

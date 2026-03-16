@@ -358,12 +358,14 @@ class SAM2Teacher:
 
         images_np = _to_numpy_batch(images)
 
-        t0 = time.perf_counter()
+        # t0 = time.perf_counter()
+        
         # 生成
         raw_preds = self.adapter.run(images_np, metas) if isinstance(self.adapter, SegmentCDWAdapter) else self.adapter.generate(images_np, metas)
 
-        t1 = time.perf_counter()
-        print(f"Mask 预测用时: {(t1 - t0) * 1000:.2f} ms")
+        # t1 = time.perf_counter()
+        # print(f"Mask 预测用时: {(t1 - t0) * 1000:.2f} ms")
+
         pseudo_labels: List[List[PseudoLabelInstance]] = []
         for idx, raw in enumerate(raw_preds):
             meta = metas[idx] if idx < len(metas) else {}
@@ -371,7 +373,7 @@ class SAM2Teacher:
             height = int(meta.get("height", images_np[idx].shape[0]))
             width = int(meta.get("width", images_np[idx].shape[1]))
 
-            t2 = time.perf_counter()
+            # t2 = time.perf_counter()
 
             # 后处理
             if raw and isinstance(raw[0], InstancePrediction):
@@ -388,14 +390,19 @@ class SAM2Teacher:
                     encode_rle=bool(self.post_cfg.get("encode_rle", False)),
                 )
 
-            t3 = time.perf_counter()
-            print(f"后处理用时: {(t3 - t2) * 1000:.2f} ms")
+            # t3 = time.perf_counter()
+            # print(f"后处理用时: {(t3 - t2) * 1000:.2f} ms")
+
             # 分类
             if self.classifier is not None:
-                t4 = time.perf_counter()
+
+                # t4 = time.perf_counter()
+
                 processed = self.classifier.classify(processed, image_np=images_np[idx])
-                t5 = time.perf_counter()
-                print(f"分类用时: {(t5 - t4) * 1000:.2f} ms")
+
+                # t5 = time.perf_counter()
+                # print(f"分类用时: {(t5 - t4) * 1000:.2f} ms")
+
             # 可靠性计算
             for inst in processed:
                 inst.reliability = compute_reliability(inst)

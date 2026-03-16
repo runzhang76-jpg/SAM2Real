@@ -101,15 +101,15 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Visualize GT boxes vs Canny prompt boxes")
     parser.add_argument(
         "--gt-json",
-        default="../data/cdw_classify/subtest/instances_Subtest.json",
+        default=r'../data\cdw_classify\dataset_seg\annotations/instances_test.json',
         help="COCO GT annotation JSON path",
     )
     parser.add_argument(
         "--images-root",
-        default="../data/cdw_classify/subtest/test",
+        default=r'../data\cdw_classify\dataset_seg\images\test',
         help="Root for image file_name in GT json",
     )
-    parser.add_argument("--image-id", type=int, default=2, help="Target image id; -1 means random")
+    parser.add_argument("--image-id", type=int, default=410, help="Target image id; -1 means random")
     parser.add_argument("--seed", type=int, default=41312, help="Random seed")
     parser.add_argument("--iou-thr", type=float, default=0.5, help="IoU threshold for matching stats")
     parser.add_argument("--out", default="outputs/canny_vs_gt_boxes.png", help="Output visualization path")

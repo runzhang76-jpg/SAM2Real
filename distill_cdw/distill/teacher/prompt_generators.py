@@ -429,6 +429,11 @@ class LabCCBoxPromptGenerator:
         self.l_thresh_min = int(cfg.get("l_thresh_min", 18))
         self.a_thresh = int(cfg.get("a_thresh", 131))
         self.b_thresh = int(cfg.get("b_thresh", 133))
+        white_cfg = cfg.get("white_object_branch", {})
+        self.white_branch_enabled = bool(white_cfg.get("enabled", False))
+        self.white_l_min = int(white_cfg.get("l_min", 200))
+        self.white_l_max = int(white_cfg.get("l_max", 255))
+        self.white_chroma_max = float(white_cfg.get("chroma_max", 12.0))
         self.close_kernel = max(1, int(cfg.get("close_kernel", 5)))
         self.open_kernel = max(1, int(cfg.get("open_kernel", 3)))
         self.min_cc_area = max(1, int(cfg.get("min_cc_area", 1500)))
@@ -488,7 +493,22 @@ class LabCCBoxPromptGenerator:
 
         lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
         l_ch, a_ch, b_ch = cv2.split(lab)
-        raw_mask = ((((b_ch > self.b_thresh) | (a_ch > self.a_thresh)) & (l_ch > self.l_thresh_min)).astype(np.uint8) * 255)
+        colored_mask = ((b_ch > self.b_thresh) | (a_ch > self.a_thresh)) & (l_ch > self.l_thresh_min)
+
+        if self.white_branch_enabled:
+            a_centered = a_ch.astype(np.int16) - 128
+            b_centered = b_ch.astype(np.int16) - 128
+            chroma_sq = a_centered * a_centered + b_centered * b_centered
+            white_mask = (
+                (l_ch >= self.white_l_min)
+                & (l_ch <= self.white_l_max)
+                & (chroma_sq <= float(self.white_chroma_max * self.white_chroma_max))
+            )
+            raw_mask_bool = colored_mask | white_mask
+        else:
+            raw_mask_bool = colored_mask
+
+        raw_mask = raw_mask_bool.astype(np.uint8) * 255
 
         close_kernel = np.ones((self.close_kernel, self.close_kernel), np.uint8)
         open_kernel = np.ones((self.open_kernel, self.open_kernel), np.uint8)

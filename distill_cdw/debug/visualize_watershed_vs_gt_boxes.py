@@ -99,8 +99,8 @@ def _stack_h(images: List[Image.Image]) -> Image.Image:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Visualize GT boxes vs Watershed prompt boxes")
-    parser.add_argument("--gt-json", default="../data/cdw_classify/subtest/instances_Subtest.json")
-    parser.add_argument("--images-root", default="../data/cdw_classify/subtest/test")
+    parser.add_argument("--gt-json", default="../data/cdw_classify/dataset_seg/annotations/instances_test.json")
+    parser.add_argument("--images-root", default="../data/cdw_classify/dataset_seg/images/test")
     parser.add_argument("--image-id", type=int, default=-1, help="Target image id; -1 means random")
     parser.add_argument("--seed", type=int, default=41312, help="Random seed")
     parser.add_argument("--iou-thr", type=float, default=0.5, help="IoU threshold for matching stats")

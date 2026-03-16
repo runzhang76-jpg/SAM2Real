@@ -17,8 +17,8 @@ data:
     allow_empty: false
   train:  # student 
     source: offline
-    root_dir: ../data/sam2/dataset/segment_cdw_coco_dataset/
-    images_dir: images_test
+    root_dir: ../data/cdw_classify/dataset_seg/
+    images_dir: images/test
     annotations_dir: annotations
     pseudolabel_path: pseudolabels/pseudolabels.json
     batch_size: 1
@@ -39,7 +39,7 @@ data:
   eval:
     enabled: true
     root_dir:
-    images_dir: images_val
+    images_dir: images/val
     gt_json: annotations/instances_val.json
     allow_empty: false
     batch_size: 1
@@ -57,7 +57,7 @@ data:
   test:
     enabled: false
     root_dir: ""
-    images_dir: images_test
+    images_dir: images/test
     gt_json: ""
     allow_empty: false
     batch_size: 1
@@ -118,6 +118,11 @@ teacher:
       l_thresh_min: 18
       a_thresh: 131
       b_thresh: 133
+      white_object_branch:
+        enabled: true
+        l_min: 200
+        l_max: 255
+        chroma_max: 12.0
       close_kernel: 5
       open_kernel: 3
       min_cc_area: 1500
@@ -194,12 +199,6 @@ teacher:
     score_threshold: 0.0
     margin_ratio: 0.1 # 提取patch时候的外扩宽度
     combine_score: mul # 是否与mask分数进行整合
-    category_map: {
-                  0:'crushed_stone',
-                  1:'brick',
-                  2:'concrete',
-                  3:'ceramic',
-                  }
     model:
       checkpoint: "reseresnext50_32x4d_0_12epochs_accuracy0.967_weights.pth"
       num_classes: 4
@@ -209,8 +208,8 @@ teacher:
       score_weight: 1.0
     dinov3_knn:
       model_source: local
-      repo_dir: "D:/Master/Project/dinov3"
-      weights: "D:/Master/Project/dinov3/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth"
+      repo_dir: "../dinov3"
+      weights: "../dinov3/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth"
       model_name: dinov3_vitb16
       device: cuda
       input_size: 256
@@ -226,15 +225,13 @@ teacher:
       feature_dim: 768
     dinov3_prototype:
       model_source: local
-      repo_dir: "D:/Master/Project/dinov3"
-      weights: "D:/Master/Project/dinov3/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth"
+      repo_dir: "../dinov3"
+      weights: "../dinov3/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth"
       model_name: dinov3_vitb16
       device: cuda
       input_size: 256
       batch_size: 32
-      prototype_csv: "distill_cdw/distill/teacher/class_prototypes.csv"
-      label_col: label
-      feature_prefix: feat
+      prototype_pth: "distill_cdw/distill/teacher/class_prototypes_UseMask.pth"
       feature_dim: 768
       score_mode: softmax
       softmax_temperature: 1.0

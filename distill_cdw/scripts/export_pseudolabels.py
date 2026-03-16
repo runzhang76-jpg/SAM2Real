@@ -52,10 +52,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-results", default="", help="Output COCO results JSON path")
     parser.add_argument("--limit", type=int, default=-1, help="Limit number of images")
     parser.add_argument("--coco-gt", 
-                        default="../data/cdw_classify/subtest/instances_Subtest.json", 
+                        default="../data/cdw_classify/dataset_seg/annotations/instances_test.json", 
                         help="COCO GT JSON path (override config)")
     parser.add_argument("--images-root", 
-                        default="../data/cdw_classify/subtest/test", 
+                        default="../data/cdw_classify/dataset_seg/images/test", 
                         help="Images root dir (override config)")
     parser.add_argument("--use-folder", action="store_true", help="Read images from folder instead of COCO")
     parser.add_argument("--encode-workers", type=int, default=0, help="ProcessPool workers for RLE encode")
@@ -64,7 +64,7 @@ def parse_args() -> argparse.Namespace:
 
 def _load_image_np(path: Path) -> "np.ndarray":
     img = Image.open(path).convert("RGB")
-    return np.asarray(img)
+    return np.array(img, copy=True)
 
 
 def _resolve_images_root(data_root: Path, cfg: Dict[str, Any], args: argparse.Namespace) -> Path:

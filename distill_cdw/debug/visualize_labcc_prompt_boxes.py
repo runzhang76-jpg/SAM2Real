@@ -25,19 +25,19 @@ from distill.utils.config import load_config
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Visualize Lab-CC prompt boxes on white background")
-    parser.add_argument("--image", default='../data/cdw_classify/subtest/test/Co9_20260112214151959.jpg', help="Input image path")
+    parser.add_argument("--image", default=r'../data\cdw_classify\dataset_seg\images\test/Co9_20260112194439586.jpg', help="Input image path")
     parser.add_argument("--out", default="outputs/labcc_prompt_boxes_white.png", help="Output image path")
     parser.add_argument("--config", default="", help="Optional config YAML to read lab_cc params")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--line-width", type=int, default=3, help="Rectangle line width")
-    parser.add_argument("--l-thresh-min", type=int, default=18)
-    parser.add_argument("--a-thresh", type=int, default=131)
-    parser.add_argument("--b-thresh", type=int, default=133)
+    parser.add_argument("--l-thresh-min", type=int, default=8)
+    parser.add_argument("--a-thresh", type=int, default=128)
+    parser.add_argument("--b-thresh", type=int, default=130)
     parser.add_argument("--close-kernel", type=int, default=5)
     parser.add_argument("--open-kernel", type=int, default=3)
-    parser.add_argument("--min-cc-area", type=int, default=1500)
-    parser.add_argument("--min-box-w", type=int, default=100)
-    parser.add_argument("--min-box-h", type=int, default=100)
+    parser.add_argument("--min-cc-area", type=int, default=800)
+    parser.add_argument("--min-box-w", type=int, default=60)
+    parser.add_argument("--min-box-h", type=int, default=60)
     parser.add_argument("--force-square", type=lambda x: str(x).lower() in {"1", "true", "yes", "y"}, default=True)
     parser.add_argument(
         "--high-overlap-filter",
