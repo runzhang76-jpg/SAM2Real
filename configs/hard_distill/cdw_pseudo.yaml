@@ -1,0 +1,9 @@
+path: ../../data/cdw_classify/dataset_seg
+train: images/pseudo
+val: images/val
+test: images/test
+names:
+  0: crushed_stone
+  1: brick
+  2: concrete
+  3: ceramic

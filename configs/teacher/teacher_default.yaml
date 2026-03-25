@@ -1,0 +1,320 @@
+experiment:
+  name: distill_default
+  output_dir: outputs/distill_default
+  seed: 42
+  device: auto
+  amp: false
+
+data:
+  teacher:
+    source: images
+    root_dir:
+    images_dir: images_test
+    gt_json: "annotations/instances_test.json"
+    batch_size: 1
+    num_workers: 0
+    shuffle: false
+    allow_empty: false
+  train:  # student
+    source: offline
+    root_dir: ../data/cdw_classify/dataset_seg/
+    images_dir: images/val
+    annotations_dir: annotations
+    pseudolabel_path: pseudolabels\train_pseudolabels.json
+    batch_size: 1
+    num_workers: 0
+    shuffle: true
+    allow_empty: false
+    fallback_to_dummy: true
+    dummy:
+      num_images: 8
+      image_size: [256, 256]
+      num_instances: 1
+    transforms:
+      to_float: true
+      resize: [640, 640]
+      flip_prob: 0.5
+      mean:  null  # [0.485, 0.456, 0.406]
+      std:  null  # [0.229, 0.224, 0.225]
+  eval:
+    enabled: true
+    root_dir:
+    images_dir: images/test
+    gt_json: annotations/instances_test.json
+    allow_empty: false
+    batch_size: 1
+    num_workers: 0
+    transforms:
+      to_float: true
+      resize: null
+      mean:  null  # [0.485, 0.456, 0.406]
+      std:  null  # [0.229, 0.224, 0.225]
+    coco:
+      enabled: false
+      iou_types: [segm]
+    calibration:
+      enabled: true
+  test:
+    enabled: false
+    root_dir: ""
+    images_dir: images/test
+    gt_json: ""
+    allow_empty: false
+    batch_size: 1
+    num_workers: 0
+    transforms:
+      to_float: true
+      resize: null
+      mean: null  # [0.485, 0.456, 0.406]
+      std: null  # [0.229, 0.224, 0.225]
+    coco:
+      enabled: false
+      iou_types: [segm]
+  remote:
+    enabled: false
+    provider: swanlab
+    remote_uri: ""
+    local_cache_dir: data/cache/distill
+    sync_mode: down
+    version: ""
+
+teacher:
+  mode: offline
+  prompt_generator:
+    type: lab_cc_boxes  # sam2_auto or canny_boxes or watershed_boxes or lab_cc_boxes
+    canny_boxes:
+      blur_kernel: 7
+      canny_low: 50
+      canny_high: 150
+      dilate_kernel: 3
+      dilate_iter: 1
+      close_kernel: 3
+      min_box_w: 100
+      min_box_h: 100
+      force_square: true
+      high_overlap_filter: false
+      high_overlap_thresh: 0.9
+      nms_thresh: 0.7
+      max_prompts_per_image: 200
+      save_debug: false
+      debug_dir: ./debug/canny_prompts
+    watershed_boxes:
+      blur_kernel: 5
+      threshold_mode: otsu
+      binary_inv: true
+      open_kernel: 3
+      open_iter: 1
+      dilate_kernel: 3
+      dilate_iter: 2
+      dist_thresh_ratio: 0.4
+      min_box_w: 60
+      min_box_h: 60
+      force_square: true
+      nms_thresh: 0.7
+      max_prompts_per_image: 200
+      save_debug: false
+      debug_dir: ./debug/watershed_prompts
+    lab_cc_boxes:
+      l_thresh_min: 18
+      a_thresh: 131
+      b_thresh: 133
+      white_object_branch:
+        enabled: true
+        l_min: 200
+        l_max: 255
+        chroma_max: 12.0
+      close_kernel: 5
+      open_kernel: 3
+      min_cc_area: 1500
+      min_box_w: 100
+      min_box_h: 100
+      force_square: true
+      high_overlap_filter: false
+      high_overlap_thresh: 0.9
+      nms_thresh: 0.7
+      max_prompts_per_image: 200
+      save_debug: false
+      debug_dir: ./debug/lab_cc_prompts
+  segment_cdw:
+    enabled: false
+    module: segment_cdw.run_eval
+    callable: run_inference
+    kwargs: {}
+  sam2:
+    config_file: external/sam2/sam2/configs/sam2.1/sam2.1_hiera_t.yaml
+    ckpt_path: checkpoints/upstream/sam2/sam2.1_hiera_tiny.pt
+    device: cuda
+    model_type: ""
+    points_per_side: 24
+    points_per_batch: 16
+    pred_iou_thresh: 0.6
+    stability_thresh: 0.7
+    stability_score_offset: 1.0
+    mask_threshold: 0.0
+    box_nms_thresh: 0.7
+    crop_n_layers: 0
+    crop_nms_thresh: 0.7
+    crop_overlap_ratio: 0.34
+    crop_n_points_downscale_factor: 1
+    min_mask_region_area: 0
+    multimask_output: true
+    box_prompt_multimask_output: false
+    output_mode: binary_mask
+    img_downsample: false
+    img_downsample_factor: 4.0
+  postprocess:
+    enabled: true
+    instance_crop:
+      margin_ratio: 0.0
+      background_mode: keep  # keep / zero / white
+      min_size: 4
+    runtime:
+      use_torch: true
+      device: auto
+      topk_pre: 0
+      torch_fp16: true
+      torch_nms: true
+      topk_nms: 0
+      log_stats: false
+    steps:
+      - name: quality_filter
+        enabled: true
+        min_area: 1000
+        max_area_frac: 0.2
+        min_score: 0.0
+        min_pred_iou: null
+        min_stability: null
+        min_bbox_side: 20
+        max_aspect_ratio: 8.0
+        min_compactness: 0.005
+      - name: nms
+        enabled: true
+        method: mask
+        iou_thresh: 0.85
+  classifier:
+    enabled: true
+    type: dinov3
+    backend: segment_cdw
+    score_threshold: 0.0
+    margin_ratio: 0.1
+    combine_score: mul
+    model:
+      checkpoint: "reseresnext50_32x4d_0_12epochs_accuracy0.967_weights.pth"
+      num_classes: 4
+      device: auto
+      input_size: 224
+      batch_size: 16
+      score_weight: 1.0
+    dinov3:
+      mode: prototype
+      model_source: local
+      repo_dir: "external/dinov3"
+      weights: "checkpoints/upstream/dinov3/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth"
+      model_name: dinov3_vitb16
+      device: cuda
+      input_size: 256
+      batch_size: 32
+      feature_dim: 768
+      knn:
+        k: 5
+        metric: cosine
+        weights_mode: distance
+        database_csv: "src/sam2real/teacher/database_knn.csv"
+        image_col: image
+        path_col: path
+        label_col: label
+        feature_prefix: feat
+      prototype:
+        prototype_pth: "src/sam2real/teacher/class_prototypes.pth"
+        score_mode: softmax
+        softmax_temperature: 1.0
+  reliability:
+    enabled: true
+    min_score: 0.0
+    max_score: 1.0
+
+student:
+  name: yolov8s_seg
+  backend: ultralytics
+  weights: yolov8s-seg.pt
+  num_classes: 4
+  in_channels: 3
+  device: auto
+  params:
+    imgsz: 640
+    conf: 0.05
+    iou: 0.7
+    kd_heads:
+      enabled: true
+
+loss:
+  mask:
+    type: bce
+    weight: 1.0
+  dice:
+    weight: 1.0
+  kl:
+    weight: 0.0
+  reliability:
+    enabled: true
+    gamma: 1.0
+  distill:
+    alpha: 1.0
+    mask_kl_weight: 0.0
+    cls_kl_weight: 0.0
+    bbox_l1_weight: 0.0
+    feat_l2_weight: 0.0
+  distill_soft:
+    enabled: true
+    profile: baseline  # baseline | mask | mask_boundary | mask_cls | full
+    teacher_soft_dir_train: teacher_soft/train
+    teacher_soft_dir_val: teacher_soft/val
+    score_weight: true
+    debug:
+      enabled: false
+      strict: true
+      log_every: 1
+      max_samples: 8
+    mask:
+      enable: true
+      weight: 1.0
+      mode: bce
+    boundary:
+      enable: true
+      weight: 1.0
+      alpha: 3.0
+    cls:
+      enable: true
+      weight: 0.5
+      temperature: 2.0
+
+optim:
+  type: sgd
+  lr: 1e-3
+  weight_decay: 1e-4
+  scheduler:
+    enabled: true
+    type: cosine
+    warmup_epochs: 0.0
+    warmup_steps: 0
+    warmup_start_factor: 0.2
+    min_lr_ratio: 0.1
+    step_size_epochs: 4
+    gamma: 0.5
+
+trainer:
+  max_epochs: 12
+  log_every: 5
+  eval_every: 1
+  save_every: 1
+  grad_accum: 1
+  clip_grad_norm: 0.0
+
+logging:
+  level: INFO
+  tensorboard:
+    enabled: false
+    log_dir: ""
+  wandb:
+    enabled: false
+

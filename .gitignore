@@ -1,29 +1,22 @@
-.vscode/
-.idea/
-
-.DS_Store
+# Python cache
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 
-*-checkpoint.ipynb
-.venv
-*.egg*
-build/*
-_C.*
-outputs/*
-
-checkpoints/
-demo/backend/checkpoints/
-
+# Weights and JSON artifacts
 *.pt
 *.pth
+*.json
 
-segment_cdw/data/
-segment_cdw/data/results/
+# User-specified excluded directories
+config/hard_distill/generated/
+configs/hard_distill/generated/
+debug/output/
+debug/outputs/
+lib/
+external/
+outputs/
+runs/
 
-demo/data/
-demo/frontend/src/assets/videos/
-notebooks/videos/
-sav_dataset/example/
-distill_cdw/distill/teacher/database_knn.csvdistill_cdw/distill/teacher/database_knn.csv
+# System/editor noise
+.DS_Store
+Thumbs.db
