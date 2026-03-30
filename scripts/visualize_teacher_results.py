@@ -19,7 +19,7 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from sam2real.utils.visualize import overlay_masks
+from matmatch2real.utils.visualize import overlay_masks
 
 
 def parse_args() -> argparse.Namespace:

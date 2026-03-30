@@ -13,7 +13,7 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from sam2real.hard_distill.manifests import (
+from matmatch2real.hard_distill.manifests import (
     DEFAULT_GENERATED_ROOT,
     ensure_base_manifests,
     load_class_names,
@@ -21,7 +21,7 @@ from sam2real.hard_distill.manifests import (
     write_data_yaml,
     write_manifest,
 )
-from sam2real.hard_distill.shot_sampler import (
+from matmatch2real.hard_distill.shot_sampler import (
     DEFAULT_DATASET_ROOT,
     sample_image_count_records,
     sample_k_shot_records,

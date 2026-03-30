@@ -15,10 +15,10 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 import numpy as np
 
-from sam2real.teacher.sam2_teacher import SAM2Teacher, SegmentCDWAdapter
-from sam2real.teacher.postprocess import PostProcessPipeline, convert_instances
-from sam2real.config.loader import load_config
-from sam2real.utils.logging import setup_logger
+from matmatch2real.teacher.matmatch_teacher import SAM2Teacher, SegmentCDWAdapter
+from matmatch2real.teacher.postprocess import PostProcessPipeline, convert_instances
+from matmatch2real.config.loader import load_config
+from matmatch2real.utils.logging import setup_logger
 
 try:
     from PIL import Image
@@ -28,7 +28,7 @@ except Exception:  # pragma: no cover
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Profile postprocess paths")
-    parser.add_argument("--config", default="sam2real-main/configs/teacher/distill_default.yaml")
+    parser.add_argument("--config", default="configs/teacher/teacher_default.yaml")
     parser.add_argument("--image", default="Co3_20250714172336216.jpg", help="Image path (required)")
     parser.add_argument("--device", default="auto", help="torch device for torch path")
     parser.add_argument("--repeat", type=int, default=3)

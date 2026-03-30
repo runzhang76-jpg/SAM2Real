@@ -16,7 +16,7 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from sam2real.core.hooks import (
+from matmatch2real.core.hooks import (
     CheckpointHook,
     EvalHook,
     Hook,
@@ -25,17 +25,17 @@ from sam2real.core.hooks import (
     TensorboardHook,
     VisualizationHook,
 )
-from sam2real.data.remote import ensure_dataset_available
-from sam2real.soft_distill import (
+from matmatch2real.data.remote import ensure_dataset_available
+from matmatch2real.soft_distill import (
     CocoEvaluator,
     DistillEngine,
     build_eval_dataloader,
     build_train_dataloader,
     prepare_class_mappings,
 )
-from sam2real.config.loader import load_config, save_config
-from sam2real.utils.logging import setup_logger
-from sam2real.utils.seed import set_seed
+from matmatch2real.config.loader import load_config, save_config
+from matmatch2real.utils.logging import setup_logger
+from matmatch2real.utils.seed import set_seed
 
 try:
     import torch
@@ -200,8 +200,8 @@ def _resolve_output_dir(args: argparse.Namespace) -> Path:
 
 
 def main() -> None:
-    from sam2real.soft_distill import DistillLoss, build_student
-    from sam2real.teacher.sam2_teacher import build_teacher
+    from matmatch2real.soft_distill import DistillLoss, build_student
+    from matmatch2real.teacher.matmatch_teacher import build_teacher
 
     args = parse_args()
     output_path = _resolve_output_dir(args)

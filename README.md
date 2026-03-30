@@ -1,6 +1,6 @@
-﻿# sam2real
+﻿# matmatch2real
 
-`sam2real` is a research-oriented codebase for teacher-generated pseudo labels, soft distillation, and hard-distill experiments built on the official Ultralytics training and validation interfaces.
+`matmatch2real` is a research-oriented codebase for teacher-generated pseudo labels, soft distillation, and hard-distill experiments built on the official Ultralytics training and validation interfaces.
 
 The repository currently covers three main workflows:
 
@@ -13,10 +13,31 @@ This README is written for two use cases:
 1. Continuing local experiments
 2. Publishing the project on GitHub with enough context for others to understand the structure and entry points
 
+## License
+
+This repository is released under the MIT license. See [LICENSE](LICENSE).
+
+## Citation
+
+Citation metadata is available in [CITATION.cff](CITATION.cff).
+
+If you use this repository in academic work, cite it as:
+
+```bibtex
+@software{zhang2026matmatch2real,
+  author = {Zhang, Skyler},
+  title = {matmatch2real},
+  year = {2026},
+  version = {0.1.0},
+  license = {MIT},
+  note = {Research code for teacher-generated pseudo labels, soft distillation, and hard-distill experiments}
+}
+```
+
 ## 1. Repository Layout
 
 ```text
-sam2real/
+matmatch2real/
   configs/
     distill/           Soft-distill configs
     hard_distill/      Hard-distill configs
@@ -33,7 +54,7 @@ sam2real/
     build_fewshot_split.py
     build_yolo_labels.py
     evaluate_hard_distill.py
-  src/sam2real/
+  src/matmatch2real/
     core/
     data/
     evaluation/
@@ -61,29 +82,107 @@ sam2real/
 - Hard-distill training, evaluation, and inference profiling
 - Debug scripts for teacher instances, DINOv3 feature maps, and YOLO inference cost analysis
 
-## 3. Environment and Dependencies
+## 3. Installation From Scratch
 
-The repository is primarily used in a Windows + PowerShell setup. Typical runtime dependencies include:
+The repository is primarily used in a Windows + PowerShell setup.
 
-- Python
-- PyTorch
-- ultralytics
-- pycocotools
-- Pillow
-- numpy
-- PyYAML
+The pinned dependency files in this repository mirror the recent local `sam2` experiment environment:
 
-To run the full teacher pipeline, you also need:
+- Python `3.12`
+- `torch==2.6.0+cu126`
+- `torchvision==0.21.0+cu126`
+- `ultralytics==8.4.22`
+- `numpy==2.1.2`
+- `Pillow==11.0.0`
+- `PyYAML==6.0.2`
+- `pycocotools==2.0.10`
 
-- The upstream SAM2 repository
-- The upstream DINOv3 repository
-- The required checkpoint files
+Files:
+
+- [environment.yml](environment.yml): minimal conda environment definition
+- [requirements.txt](requirements.txt): base Python dependencies
+- [requirements-cu126.txt](requirements-cu126.txt): tested CUDA 12.6 runtime stack
+
+### 3.1 Create the Python Environment
+
+Using Conda:
+
+```powershell
+conda env create -f environment.yml
+conda activate matmatch2real
+pip install -r requirements-cu126.txt
+```
+
+Using `venv`:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements-cu126.txt
+```
+
+If your machine is not CUDA 12.6-based, keep the versions in `requirements.txt` and install a matching `torch` / `torchvision` pair from the official PyTorch selector before installing `ultralytics`.
+
+### 3.2 Download Upstream Source Repositories
+
+PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\download_upstream_sources.ps1
+```
+
+Bash:
+
+```bash
+bash ./download_upstream_sources.sh
+```
+
+This clones:
+
+- `external/sam2`
+- `external/dinov3`
+
+### 3.3 Download Upstream Weights
+
+PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\download_upstream_weights.ps1
+```
+
+Bash:
+
+```bash
+bash ./download_upstream_weights.sh
+```
+
+This downloads the checkpoints expected by the default configs:
+
+- `checkpoints/upstream/sam2/sam2.1_hiera_tiny.pt`
+- `checkpoints/upstream/dinov3/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth`
+
+### 3.4 Verify the Installation
+
+Run a lightweight import check:
+
+```powershell
+python -c "import torch, torchvision, ultralytics, pycocotools, numpy, yaml; print(torch.__version__)"
+```
+
+Then verify the main entry points are available:
+
+```powershell
+python scripts\build_yolo_labels.py --help
+python scripts\run_hard_distill.py --help
+python scripts\export_pseudolabels.py --help
+```
 
 Important notes:
 
-- `external/` and large weight files are not intended to be uploaded to GitHub
-- `*.pt`, `*.pth`, and `*.json` are excluded from version control in this repository setup
-- Anyone cloning the repo will need to prepare the dependencies, checkpoints, and dataset locally
+- `external/`, `checkpoints/`, `runs/`, `outputs/`, and large local assets are not intended to be uploaded to GitHub
+- anyone cloning the repo needs to prepare dependencies, checkpoints, and datasets locally
+- optional integrations such as TensorBoard and SwanLab are not required for the base install path above
 
 ## 4. Dataset Layout
 
@@ -121,6 +220,7 @@ Notes:
 - `labels/pseudo` is used for stage-1 pseudo pretraining
 - `labels/train` is used for few-shot or image-count sampling
 - `annotations/*.json` and `pseudolabels/*.json` are local experiment assets and are intentionally not tracked by Git
+- a fuller data-preparation guide is available in [docs/dataset.md](docs/dataset.md)
 
 ## 5. Teacher Pseudo-Label Workflow
 

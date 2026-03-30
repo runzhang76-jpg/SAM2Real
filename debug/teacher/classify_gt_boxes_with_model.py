@@ -18,10 +18,10 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from sam2real.core.structures import InstancePrediction
-from sam2real.teacher.classifier_adapter import ClassifierAdapter
-from sam2real.config.loader import load_config
-from sam2real.utils.logging import setup_logger
+from matmatch2real.core.structures import InstancePrediction
+from matmatch2real.teacher.classifier_adapter import ClassifierAdapter
+from matmatch2real.config.loader import load_config
+from matmatch2real.utils.logging import setup_logger
 
 try:
     from pycocotools import mask as mask_utils  # type: ignore
@@ -57,7 +57,7 @@ def _decode_segmentation(seg: Any, height: int, width: int) -> Optional[np.ndarr
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Debug model classifier using GT boxes")
-    parser.add_argument("--config", default="sam2real-main/configs/teacher/distill_default.yaml")
+    parser.add_argument("--config", default="matmatch2real-main/configs/teacher/distill_default.yaml")
     parser.add_argument("--gt-json", default="")
     parser.add_argument("--images-root", default="")
     parser.add_argument("--use-mask", type=_str2bool, default=True, help="Mask-out background using GT segmentation")

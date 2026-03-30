@@ -25,7 +25,7 @@ data:
     num_workers: 0
     shuffle: true
     allow_empty: false
-    fallback_to_dummy: true
+    fallback_to_dummy: false
     dummy:
       num_images: 8
       image_size: [256, 256]
@@ -219,13 +219,13 @@ teacher:
         k: 5
         metric: cosine
         weights_mode: distance
-        database_csv: "src/sam2real/teacher/database_knn.csv"
+        database_csv: "src/matmatch2real/teacher/database_knn.csv"
         image_col: image
         path_col: path
         label_col: label
         feature_prefix: feat
       prototype:
-        prototype_pth: "src/sam2real/teacher/class_prototypes.pth"
+        prototype_pth: "src/matmatch2real/teacher/class_prototypes.pth"
         score_mode: softmax
         softmax_temperature: 1.0
   reliability:

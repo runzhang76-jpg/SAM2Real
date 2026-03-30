@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+title: matmatch2real
+message: If you use this repository in academic work, please cite it using the metadata below.
+type: software
+authors:
+  - family-names: Zhang
+    given-names: Skyler
+    email: runzhang76@gmail.com
+license: MIT
+version: 0.1.0
+date-released: 2026-03-26
+abstract: Research code for teacher-generated pseudo labels, soft distillation, and hard-distill experiments built around SAM2, DINOv3, and Ultralytics YOLO.
+keywords:
+  - pseudo-labeling
+  - knowledge distillation
+  - instance segmentation
+  - sam2
+  - dinov3
+  - yolov8

@@ -20,11 +20,11 @@ if str(SRC_ROOT) not in sys.path:
 
 import torch
 
-from sam2real.config.loader import load_config
-from sam2real.data.datasets import build_teacher_dataset
-from sam2real.teacher import SAM2Teacher
-from sam2real.utils.logging import setup_logger
-from sam2real.utils.seed import set_seed
+from matmatch2real.config.loader import load_config
+from matmatch2real.data.datasets import build_teacher_dataset
+from matmatch2real.teacher import SAM2Teacher
+from matmatch2real.utils.logging import setup_logger
+from matmatch2real.utils.seed import set_seed
 
 
 def parse_args() -> argparse.Namespace:

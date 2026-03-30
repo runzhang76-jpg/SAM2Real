@@ -17,10 +17,10 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from sam2real.teacher.dinov3_classifier import load_model
-from sam2real.config.loader import load_config
-from sam2real.utils.logging import setup_logger
-from sam2real.utils.paths import resolve_project_path
+from matmatch2real.teacher.dinov3_classifier import load_model
+from matmatch2real.config.loader import load_config
+from matmatch2real.utils.logging import setup_logger
+from matmatch2real.utils.paths import resolve_project_path
 
 import torch
 from PIL import Image
@@ -222,7 +222,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--margin-ratio", type=float, default=0, help="Crop margin; <0 uses config classifier.margin_ratio")
     parser.add_argument("--limit", type=int, default=-1, help="Limit number of GT instances")
     parser.add_argument("--min-per-class", type=int, default=1, help="Minimum samples required to export a class prototype")
-    parser.add_argument("--output", default="src/sam2real/teacher/class_prototypes.pth", help="Output prototype database .pth")
+    parser.add_argument("--output", default="src/matmatch2real/teacher/class_prototypes.pth", help="Output prototype database .pth")
     return parser.parse_args()
 
 

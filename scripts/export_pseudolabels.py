@@ -16,11 +16,11 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from sam2real.core.structures import PseudoLabelInstance
-from sam2real.data.remote import ensure_dataset_available
-from sam2real.teacher.sam2_teacher import SAM2Teacher
-from sam2real.config.loader import load_config
-from sam2real.utils.logging import setup_logger
+from matmatch2real.core.structures import PseudoLabelInstance
+from matmatch2real.data.remote import ensure_dataset_available
+from matmatch2real.teacher.matmatch_teacher import SAM2Teacher
+from matmatch2real.config.loader import load_config
+from matmatch2real.utils.logging import setup_logger
 
 import numpy as np
 from PIL import Image
@@ -31,7 +31,7 @@ from tqdm import tqdm
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Export pseudo labels from teacher (COCO aligned)")
-    parser.add_argument("--config", default=str(PROJECT_ROOT / "configs" / "teacher" / "distill_default.yaml"), help="Path to config")
+    parser.add_argument("--config", default=str(PROJECT_ROOT / "configs" / "teacher" / "teacher_default.yaml"), help="Path to config")
     parser.add_argument("--output", default="pseudolabels/test_pseudolabels.json", help="Output pseudo label JSON path")
     parser.add_argument("--output-results", default="", help="Output COCO results JSON path")
     parser.add_argument("--limit", type=int, default=-1, help="Limit number of images")

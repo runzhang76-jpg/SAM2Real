@@ -13,7 +13,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from ultralytics import YOLO
 
-from sam2real.utils.paths import resolve_project_path
+from matmatch2real.utils.paths import resolve_project_path
 
 
 def str2bool(value: str | bool) -> bool:

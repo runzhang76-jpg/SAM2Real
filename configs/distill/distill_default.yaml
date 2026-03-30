@@ -25,7 +25,7 @@ data:
     num_workers: 0
     shuffle: true
     allow_empty: false
-    fallback_to_dummy: true
+    fallback_to_dummy: false
     dummy:
       num_images: 8
       image_size: [256, 256]

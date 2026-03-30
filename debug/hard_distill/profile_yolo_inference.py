@@ -22,8 +22,8 @@ if str(SRC_ROOT) not in sys.path:
 import torch
 from ultralytics import YOLO
 
-from sam2real.hard_distill.yolo_runner import DEFAULT_CONFIG, load_yaml_config, normalize_runtime_config
-from sam2real.utils.paths import resolve_project_path
+from matmatch2real.hard_distill.yolo_runner import DEFAULT_CONFIG, load_yaml_config, normalize_runtime_config
+from matmatch2real.utils.paths import resolve_project_path
 
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp"}

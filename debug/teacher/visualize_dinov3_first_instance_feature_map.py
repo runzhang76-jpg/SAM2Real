@@ -18,11 +18,11 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from sam2real.config.loader import load_config
-from sam2real.teacher.classifier_adapter import _masked_square_crop
-from sam2real.teacher.dinov3_classifier import DinoV3FeatureExtractor
-from sam2real.utils.logging import setup_logger
-from sam2real.utils.paths import resolve_project_path
+from matmatch2real.config.loader import load_config
+from matmatch2real.teacher.classifier_adapter import _masked_square_crop
+from matmatch2real.teacher.dinov3_classifier import DinoV3FeatureExtractor
+from matmatch2real.utils.logging import setup_logger
+from matmatch2real.utils.paths import resolve_project_path
 
 
 def _str2bool(value: str) -> bool:

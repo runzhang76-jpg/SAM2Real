@@ -2,8 +2,8 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SAM2_DIR="${PROJECT_ROOT}/checkpoints/sam2"
-DINO_DIR="${PROJECT_ROOT}/checkpoints/dinov3"
+SAM2_DIR="${PROJECT_ROOT}/checkpoints/upstream/sam2"
+DINO_DIR="${PROJECT_ROOT}/checkpoints/upstream/dinov3"
 
 mkdir -p "${SAM2_DIR}" "${DINO_DIR}"
 
