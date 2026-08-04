@@ -29,6 +29,46 @@ class SAM2AutoPromptGenerator:
         return np.zeros((0, 4), dtype=np.float32)
 
 
+class BoxPromptRefiner:
+    """Apply common geometric refinement and limiting to generated box prompts."""
+
+    def __init__(self, generator: PromptGenerator, cfg: Optional[Dict[str, Any]] = None) -> None:
+        self.generator = generator
+        self.name = generator.name
+        cfg = cfg or {}
+        refinement_cfg = cfg.get("box_refinement", {}) or {}
+        self.enabled = bool(refinement_cfg.get("enabled", False))
+        self.x_negative_ratio = float(refinement_cfg.get("x_negative_ratio", 0.0))
+        self.x_positive_ratio = float(refinement_cfg.get("x_positive_ratio", 0.0))
+        self.y_negative_ratio = float(refinement_cfg.get("y_negative_ratio", 0.0))
+        self.y_positive_ratio = float(refinement_cfg.get("y_positive_ratio", 0.0))
+        self.max_boxes_per_image = int(cfg.get("max_boxes_per_image", 0))
+
+    def generate_boxes(self, image: np.ndarray, image_meta: Optional[Dict[str, Any]] = None) -> np.ndarray:
+        boxes = np.asarray(self.generator.generate_boxes(image, image_meta), dtype=np.float32)
+        if boxes.size == 0:
+            return np.zeros((0, 4), dtype=np.float32)
+        if boxes.ndim != 2 or boxes.shape[1] != 4:
+            raise ValueError(f"Prompt generator returned boxes with invalid shape: {boxes.shape}")
+
+        if self.enabled:
+            height, width = image.shape[:2]
+            refined = boxes.copy()
+            box_widths = boxes[:, 2] - boxes[:, 0]
+            box_heights = boxes[:, 3] - boxes[:, 1]
+            refined[:, 0] -= box_widths * self.x_negative_ratio
+            refined[:, 2] += box_widths * self.x_positive_ratio
+            refined[:, 1] -= box_heights * self.y_negative_ratio
+            refined[:, 3] += box_heights * self.y_positive_ratio
+            refined[:, [0, 2]] = np.clip(refined[:, [0, 2]], 0.0, float(width))
+            refined[:, [1, 3]] = np.clip(refined[:, [1, 3]], 0.0, float(height))
+            boxes = refined[(refined[:, 2] > refined[:, 0]) & (refined[:, 3] > refined[:, 1])]
+
+        if self.max_boxes_per_image > 0:
+            boxes = boxes[: self.max_boxes_per_image]
+        return boxes.astype(np.float32, copy=False)
+
+
 def _ensure_odd(value: int, fallback: int = 3) -> int:
     k = int(value)
     if k <= 0:
@@ -585,11 +625,13 @@ def build_prompt_generator(cfg: Optional[Dict[str, Any]] = None) -> PromptGenera
     cfg = cfg or {}
     prompt_type = str(cfg.get("type", "sam2_auto")).lower()
     if prompt_type == "sam2_auto":
-        return SAM2AutoPromptGenerator(cfg.get("sam2_auto", {}))
-    if prompt_type == "canny_boxes":
-        return CannyBoxPromptGenerator(cfg.get("canny_boxes", {}))
-    if prompt_type == "watershed_boxes":
-        return WatershedBoxPromptGenerator(cfg.get("watershed_boxes", {}))
-    if prompt_type == "lab_cc_boxes":
-        return LabCCBoxPromptGenerator(cfg.get("lab_cc_boxes", {}))
-    raise ValueError(f"Unknown prompt_generator.type: {prompt_type}")
+        generator: PromptGenerator = SAM2AutoPromptGenerator(cfg.get("sam2_auto", {}))
+    elif prompt_type == "canny_boxes":
+        generator = CannyBoxPromptGenerator(cfg.get("canny_boxes", {}))
+    elif prompt_type == "watershed_boxes":
+        generator = WatershedBoxPromptGenerator(cfg.get("watershed_boxes", {}))
+    elif prompt_type == "lab_cc_boxes":
+        generator = LabCCBoxPromptGenerator(cfg.get("lab_cc_boxes", {}))
+    else:
+        raise ValueError(f"Unknown prompt_generator.type: {prompt_type}")
+    return BoxPromptRefiner(generator, cfg)

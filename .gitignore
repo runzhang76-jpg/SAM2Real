@@ -16,6 +16,8 @@ lib/
 external/
 outputs/
 runs/
+experiments/
+experiment_results/
 
 # System/editor noise
 .DS_Store

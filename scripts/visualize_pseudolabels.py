@@ -26,15 +26,23 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Visualize pseudolabels on a selected image")
     parser.add_argument(
         "--pred",
-        default="../data/cdw_classify/dataset_seg/annotations/instances_test.json",
+        default=r"D:/zhangrun/project/PointCould4AggGradation\dataset/18-railway-ballast-particles\data\photos_of_ballast_particles\particle_01/PRE_annotations/annotations.json",
         help="Pseudo label JSON path",
     )
     parser.add_argument(
         "--out",
         default="outputs/gt_overlay.png",
-        help="Output image path",
+        help="Output image path for a single image",
     )
-    parser.add_argument("--images-root", default="../data/cdw_classify/dataset_seg/images/test", help="Root for relative file_name")
+    parser.add_argument("--all", action="store_true", help="Visualize every image in the pseudo-label JSON")
+    parser.add_argument(
+        "--out-dir",
+        default=r"outputs/railway_ballast/visualize_pseudolabels",
+        help="Output directory used with --all; preserves image-relative paths",
+    )
+    parser.add_argument("--images-root", 
+                        default=r"D:/zhangrun/project/PointCould4AggGradation\dataset/18-railway-ballast-particles\data\photos_of_ballast_particles\particle_01/images", 
+                        help="Root for relative file_name")
     parser.add_argument("--image-id", type=int, default=-1, help="Target image id; -1 means random")
     parser.add_argument(
         "--draw-boxes",
@@ -102,6 +110,46 @@ def _draw_boxes(
     return np.asarray(canvas)
 
 
+def _normalized_output_path(path: Path) -> Path:
+    if path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}:
+        return path.with_suffix(".jpg")
+    return path
+
+
+def _visualize_image(
+    img_info: Dict[str, Any],
+    annotations: List[Dict[str, Any]],
+    category_names: Dict[int, str],
+    images_root: str,
+    out_path: Path,
+    draw_boxes: bool,
+) -> tuple[int, int, Path]:
+    image_id = int(img_info["id"])
+    file_name = str(img_info.get("file_name", ""))
+    image_path = _resolve_image_path(file_name, images_root)
+    image = np.asarray(Image.open(image_path).convert("RGB"))
+    height = int(img_info.get("height", image.shape[0]))
+    width = int(img_info.get("width", image.shape[1]))
+
+    masks = []
+    selected_annotations: List[Dict[str, Any]] = []
+    for ann in annotations:
+        if int(ann.get("image_id", -1)) != image_id:
+            continue
+        selected_annotations.append(ann)
+        seg = ann.get("segmentation")
+        if seg is not None:
+            masks.append(_decode_segmentation(seg, height, width))
+
+    overlaid = overlay_masks(image, masks, alpha=0.9)
+    if draw_boxes:
+        overlaid = _draw_boxes(overlaid, selected_annotations, category_names)
+    out_path = _normalized_output_path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(overlaid).save(out_path)
+    return len(masks), len(selected_annotations), out_path
+
+
 def main() -> None:
     args = parse_args()
     random.seed(args.seed)
@@ -118,35 +166,29 @@ def main() -> None:
     if not images:
         raise ValueError("pseudolabel JSON has no images[]")
 
+    if args.all:
+        out_dir = Path(args.out_dir)
+        for index, img_info in enumerate(images, start=1):
+            file_name = str(img_info.get("file_name", ""))
+            relative_path = Path(file_name) if file_name else Path(f"image_{img_info['id']}.png")
+            masks, anns, out_path = _visualize_image(
+                img_info, annotations, category_names, args.images_root, out_dir / relative_path, args.draw_boxes
+            )
+            print(f"[{index}/{len(images)}] saved: {out_path} | masks={masks} | anns={anns}")
+        print(f"visualized {len(images)} images to: {out_dir}")
+        return
+
     img_info = _pick_image(images, args.image_id)
-    image_id = int(img_info["id"])
-    file_name = str(img_info.get("file_name", ""))
-    image_path = _resolve_image_path(file_name, args.images_root)
-    image = np.asarray(Image.open(image_path).convert("RGB"))
-
-    masks = []
-    selected_annotations: List[Dict[str, Any]] = []
-    height = int(img_info.get("height", image.shape[0]))
-    width = int(img_info.get("width", image.shape[1]))
-    for ann in annotations:
-        if int(ann.get("image_id", -1)) != image_id:
-            continue
-        selected_annotations.append(ann)
-        seg = ann.get("segmentation")
-        if seg is None:
-            continue
-        masks.append(_decode_segmentation(seg, height, width))
-
-    overlaid = overlay_masks(image, masks, alpha=0.9)
-    if args.draw_boxes:
-        overlaid = _draw_boxes(overlaid, selected_annotations, category_names)
-    out_path = Path(args.out)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    Image.fromarray(overlaid).save(out_path)
-    print(
-        f"saved: {out_path} | image_id={image_id} | file={file_name} | "
-        f"masks={len(masks)} | anns={len(selected_annotations)} | draw_boxes={args.draw_boxes}"
+    masks, anns, out_path = _visualize_image(
+        img_info, annotations, category_names, args.images_root, Path(args.out), args.draw_boxes
     )
+    print(
+        f"saved: {out_path} | image_id={img_info['id']} | file={img_info.get('file_name', '')} | "
+        f"masks={masks} | anns={anns} | draw_boxes={args.draw_boxes}"
+    )
+    return
+
+    # PIL 保存图片时必须具有可识别的扩展名
 
 
 if __name__ == "__main__":

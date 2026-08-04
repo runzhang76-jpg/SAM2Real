@@ -8,7 +8,7 @@ import json
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -213,16 +213,236 @@ def _extract_features(
     return _l2_normalize(out)
 
 
+def _validate_ratio(name: str, value: float) -> float:
+    ratio = float(value)
+    if ratio <= 0.0 or ratio > 1.0:
+        raise ValueError(f"{name} must be in (0, 1], got {ratio}")
+    return ratio
+
+
+def _resolve_min_max_class_ratio(value: Optional[float], *, seed: int) -> Tuple[float, str]:
+    if value is not None:
+        return _validate_ratio("min_max_class_ratio", value), "argument"
+    rng = np.random.default_rng(seed)
+    ratio = float(rng.uniform(np.nextafter(0.5, 1.0), 1.0))
+    return ratio, "random"
+
+
+def _largest_remainder_allocation(
+    capacities: Dict[int, int],
+    target_total: int,
+) -> Dict[int, int]:
+    if target_total <= 0 or not capacities:
+        return {int(class_id): 0 for class_id in capacities}
+
+    total_capacity = sum(int(v) for v in capacities.values())
+    if total_capacity <= 0:
+        return {int(class_id): 0 for class_id in capacities}
+    if target_total >= total_capacity:
+        return {int(class_id): int(v) for class_id, v in capacities.items()}
+
+    raw_targets: Dict[int, float] = {}
+    allocation: Dict[int, int] = {}
+    for class_id, capacity in capacities.items():
+        raw = target_total * float(capacity) / float(total_capacity)
+        raw_targets[int(class_id)] = raw
+        allocation[int(class_id)] = min(int(capacity), int(np.floor(raw)))
+
+    assigned = sum(allocation.values())
+    remaining = target_total - assigned
+    if remaining <= 0:
+        return allocation
+
+    order = sorted(
+        capacities.keys(),
+        key=lambda class_id: (
+            raw_targets[int(class_id)] - np.floor(raw_targets[int(class_id)]),
+            capacities[int(class_id)] - allocation[int(class_id)],
+            -int(class_id),
+        ),
+        reverse=True,
+    )
+    for class_id in order:
+        if remaining <= 0:
+            break
+        cid = int(class_id)
+        spare = int(capacities[cid]) - int(allocation[cid])
+        if spare <= 0:
+            continue
+        take = min(spare, remaining)
+        allocation[cid] += take
+        remaining -= take
+
+    return allocation
+
+
+def _largest_remainder_from_targets(
+    raw_targets: Dict[int, float],
+    capacities: Dict[int, int],
+    desired_total: int,
+) -> Dict[int, int]:
+    allocation: Dict[int, int] = {}
+    for class_id, raw_target in raw_targets.items():
+        allocation[int(class_id)] = min(int(capacities[int(class_id)]), int(np.floor(raw_target)))
+
+    assigned = sum(allocation.values())
+    remaining = max(0, int(desired_total) - assigned)
+    if remaining <= 0:
+        return allocation
+
+    order = sorted(
+        raw_targets.keys(),
+        key=lambda class_id: (
+            raw_targets[int(class_id)] - np.floor(raw_targets[int(class_id)]),
+            capacities[int(class_id)] - allocation[int(class_id)],
+            -int(class_id),
+        ),
+        reverse=True,
+    )
+    for class_id in order:
+        if remaining <= 0:
+            break
+        cid = int(class_id)
+        if allocation[cid] >= int(capacities[cid]):
+            continue
+        allocation[cid] += 1
+        remaining -= 1
+    return allocation
+
+
+def _build_exact_ratio_targets(
+    raw_counts: Dict[int, int],
+    *,
+    target_total: int,
+    min_max_class_ratio: float,
+) -> Tuple[Dict[int, int], Dict[str, Any]]:
+    if not raw_counts:
+        return {}, {"requested_total": 0, "selected_total": 0, "actual_ratio": None}
+
+    class_ids = sorted(raw_counts.keys())
+    if len(class_ids) == 1:
+        only_id = int(class_ids[0])
+        count = min(int(raw_counts[only_id]), int(target_total))
+        return {only_id: count}, {
+            "requested_total": int(target_total),
+            "selected_total": int(count),
+            "actual_ratio": 1.0 if count > 0 else None,
+        }
+
+    count_values = [int(raw_counts[class_id]) for class_id in class_ids]
+    raw_min = min(count_values)
+    raw_max = max(count_values)
+
+    if raw_max == raw_min:
+        even_target = min(sum(count_values), int(target_total))
+        even_counts = _largest_remainder_allocation(
+            {int(class_id): int(raw_counts[class_id]) for class_id in class_ids},
+            even_target,
+        )
+        return even_counts, {
+            "requested_total": int(target_total),
+            "selected_total": int(sum(even_counts.values())),
+            "actual_ratio": 1.0 if even_counts else None,
+        }
+
+    weights: Dict[int, float] = {}
+    for class_id in class_ids:
+        count = float(raw_counts[int(class_id)])
+        position = (count - float(raw_min)) / max(1e-12, float(raw_max - raw_min))
+        weights[int(class_id)] = float(min_max_class_ratio + (1.0 - min_max_class_ratio) * position)
+
+    scale_from_caps = min(
+        float(raw_counts[int(class_id)]) / max(weights[int(class_id)], 1e-12)
+        for class_id in class_ids
+    )
+    scale_from_total = float(target_total) / max(sum(weights.values()), 1e-12)
+    scale = min(scale_from_caps, scale_from_total)
+
+    raw_targets = {int(class_id): float(scale * weights[int(class_id)]) for class_id in class_ids}
+    feasible_total = min(int(target_total), int(np.floor(sum(raw_targets))) + len(class_ids))
+    selected_counts = _largest_remainder_from_targets(raw_targets, raw_counts, feasible_total)
+
+    positive_counts = [int(v) for v in selected_counts.values() if int(v) > 0]
+    actual_ratio = None
+    if positive_counts:
+        actual_ratio = float(min(positive_counts) / max(max(positive_counts), 1))
+
+    return selected_counts, {
+        "requested_total": int(target_total),
+        "selected_total": int(sum(selected_counts.values())),
+        "actual_ratio": actual_ratio,
+        "raw_min": int(raw_min),
+        "raw_max": int(raw_max),
+        "scale_from_caps": float(scale_from_caps),
+        "scale_from_total": float(scale_from_total),
+    }
+
+
+def _sample_annotations_by_class(
+    anns: Sequence[Dict[str, Any]],
+    *,
+    total_sample_ratio: float,
+    min_max_class_ratio: float,
+    seed: int,
+) -> Tuple[List[Dict[str, Any]], Dict[int, int], Dict[int, int], Dict[str, Any]]:
+    anns_by_class: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+    for ann in anns:
+        class_id = int(ann.get("category_id", -1))
+        anns_by_class[class_id].append(ann)
+
+    raw_counts = {class_id: len(items) for class_id, items in anns_by_class.items()}
+    raw_total = len(anns)
+    target_total = int(np.floor(raw_total * total_sample_ratio))
+    if total_sample_ratio > 0 and raw_total > 0:
+        target_total = max(1, target_total)
+    target_total = min(target_total, raw_total)
+
+    selected_counts, ratio_summary = _build_exact_ratio_targets(
+        raw_counts,
+        target_total=target_total,
+        min_max_class_ratio=min_max_class_ratio,
+    )
+    rng_pick = np.random.default_rng(seed)
+    selected_anns: List[Dict[str, Any]] = []
+    for class_id in sorted(anns_by_class.keys()):
+        pool = anns_by_class[class_id]
+        take = int(selected_counts.get(class_id, 0))
+        if take <= 0:
+            continue
+        if take >= len(pool):
+            selected_anns.extend(pool)
+            continue
+        picked = rng_pick.choice(len(pool), size=take, replace=False)
+        selected_anns.extend(pool[int(idx)] for idx in np.sort(picked))
+
+    summary = {
+        "raw_total": raw_total,
+        "balanced_total": len(selected_anns),
+        "selected_total": len(selected_anns),
+        "target_total": int(target_total),
+        "class_cap": None,
+        "actual_min_max_ratio": ratio_summary.get("actual_ratio"),
+        "requested_total": ratio_summary.get("requested_total"),
+        "ratio_limited": bool(ratio_summary.get("selected_total", 0) < int(target_total)),
+        "raw_min": ratio_summary.get("raw_min"),
+        "raw_max": ratio_summary.get("raw_max"),
+    }
+    return selected_anns, raw_counts, selected_counts, summary
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build class prototype database from GT annotations")
-    parser.add_argument("--config", default=str(PROJECT_ROOT / "configs" / "teacher" / "distill_default.yaml"))
+    parser.add_argument("--config", default=str(PROJECT_ROOT / "configs" / "teacher" / "teacher_default.yaml"))
     parser.add_argument("--gt-json", default="../data/cdw_classify/dataset_seg/annotations/instances_test.json", help="COCO annotation json path")
     parser.add_argument("--images-root", default="../data/cdw_classify/dataset_seg/images/test", help="Images root directory")
     parser.add_argument("--use-mask", type=_str2bool, default=False, help="Mask-out background using GT segmentation")
     parser.add_argument("--margin-ratio", type=float, default=0, help="Crop margin; <0 uses config classifier.margin_ratio")
     parser.add_argument("--limit", type=int, default=-1, help="Limit number of GT instances")
-    parser.add_argument("--min-per-class", type=int, default=1, help="Minimum samples required to export a class prototype")
-    parser.add_argument("--output", default="src/matmatch2real/teacher/class_prototypes.pth", help="Output prototype database .pth")
+    parser.add_argument("--total-sample-ratio", type=float, default=1.0, help="Select this fraction of all GT instances in the JSON")
+    parser.add_argument("--min-max-class-ratio", type=float, default=1.0, help="Target min_class_count / max_class_count; if omitted, sample a random ratio > 0.5")
+    parser.add_argument("--seed", type=int, default=0, help="Random seed used for class-balanced sampling")
+    parser.add_argument("--min-per-class", type=int, default=4, help="Minimum samples required to export a class prototype")
+    parser.add_argument("--output", default="lib/class_prototypes_sampleR1p0_classR0p9.pth", help="Output prototype database .pth")
     return parser.parse_args()
 
 
@@ -261,6 +481,12 @@ def main() -> None:
         raise RuntimeError("PyTorch is required")
     if Image is None:
         raise RuntimeError("PIL is required")
+
+    total_sample_ratio = _validate_ratio("total_sample_ratio", args.total_sample_ratio)
+    effective_min_max_class_ratio, min_max_class_ratio_source = _resolve_min_max_class_ratio(
+        args.min_max_class_ratio,
+        seed=int(args.seed),
+    )
 
     cfg = _normalize_config_paths(load_config(args.config))
     dino_cfg = _resolve_dino_cfg(cfg)
@@ -302,6 +528,38 @@ def main() -> None:
 
     if args.limit > 0:
         anns = anns[: args.limit]
+
+    sampled_anns, raw_class_counts, selected_class_counts, sample_summary = _sample_annotations_by_class(
+        anns,
+        total_sample_ratio=total_sample_ratio,
+        min_max_class_ratio=effective_min_max_class_ratio,
+        seed=int(args.seed),
+    )
+    if sample_summary["selected_total"] <= 0:
+        raise RuntimeError("Sampling removed all GT instances; adjust --total-sample-ratio/--min-max-class-ratio")
+    if sample_summary["ratio_limited"]:
+        logger.warning(
+            "exact class-ratio target reduced selected instances: requested=%d selected=%d target_ratio=%.4f actual_ratio=%.4f",
+            int(sample_summary["target_total"]),
+            int(sample_summary["selected_total"]),
+            float(effective_min_max_class_ratio),
+            float(sample_summary["actual_min_max_ratio"] or 0.0),
+        )
+    logger.info(
+        "sampling GT instances: raw=%d requested=%d selected=%d total_ratio=%.4f target_min_max_ratio=%.4f actual_min_max_ratio=%s seed=%d",
+        int(sample_summary["raw_total"]),
+        int(sample_summary["target_total"]),
+        int(sample_summary["selected_total"]),
+        total_sample_ratio,
+        float(effective_min_max_class_ratio),
+        "n/a" if sample_summary["actual_min_max_ratio"] is None else f"{float(sample_summary['actual_min_max_ratio']):.4f}",
+        int(args.seed),
+    )
+    logger.info(
+        "min-max class ratio source: %s",
+        min_max_class_ratio_source,
+    )
+    anns = sampled_anns
 
     image_cache: Dict[int, np.ndarray] = {}
     patches: List[np.ndarray] = []
@@ -397,10 +655,19 @@ def main() -> None:
             {
                 "category_id": class_id,
                 "category_name": cat_name_by_id.get(class_id, str(class_id)),
+                "raw_count": int(raw_class_counts.get(class_id, 0)),
+                "selected_count": int(selected_class_counts.get(class_id, 0)),
                 "count": count,
             }
         )
-        logger.info("class=%s(%d): samples=%d", cat_name_by_id.get(class_id, str(class_id)), class_id, count)
+        logger.info(
+            "class=%s(%d): raw=%d selected=%d used=%d",
+            cat_name_by_id.get(class_id, str(class_id)),
+            class_id,
+            int(raw_class_counts.get(class_id, 0)),
+            int(selected_class_counts.get(class_id, 0)),
+            count,
+        )
 
     if not prototypes:
         raise RuntimeError("No class prototypes were built")
@@ -423,12 +690,22 @@ def main() -> None:
             "batch_size": batch_size,
             "use_mask": bool(args.use_mask),
             "margin_ratio": margin_ratio,
+            "total_sample_ratio": float(total_sample_ratio),
+            "min_max_class_ratio": float(effective_min_max_class_ratio),
+            "min_max_class_ratio_arg": None if args.min_max_class_ratio is None else float(args.min_max_class_ratio),
+            "min_max_class_ratio_source": min_max_class_ratio_source,
+            "seed": int(args.seed),
             "min_per_class": int(args.min_per_class),
         },
         "source": {
             "gt_json": str(gt_json_path),
             "images_root": str(images_root),
+            "raw_num_instances": int(sample_summary["raw_total"]),
+            "balanced_num_instances": int(sample_summary["selected_total"]),
             "num_instances": len(patches),
+            "class_cap": sample_summary["class_cap"],
+            "actual_min_max_ratio": sample_summary["actual_min_max_ratio"],
+            "ratio_limited": bool(sample_summary["ratio_limited"]),
             "skipped": skipped,
         },
     }

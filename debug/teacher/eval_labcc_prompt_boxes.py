@@ -17,7 +17,7 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from matmatch2real.teacher.prompt_generators import LabCCBoxPromptGenerator
+from matmatch2real.teacher.prompt_generators import build_prompt_generator
 from matmatch2real.config.loader import load_config
 
 
@@ -90,29 +90,6 @@ def _parse_iou_thrs(value: str) -> List[float]:
     return thrs
 
 
-def _build_labcc_cfg(args: argparse.Namespace) -> Dict[str, Any]:
-    lab_cfg: Dict[str, Any] = {
-        "l_thresh_min": args.l_thresh_min,
-        "a_thresh": args.a_thresh,
-        "b_thresh": args.b_thresh,
-        "close_kernel": args.close_kernel,
-        "open_kernel": args.open_kernel,
-        "min_cc_area": args.min_cc_area,
-        "min_box_w": args.min_box_w,
-        "min_box_h": args.min_box_h,
-        "force_square": bool(args.force_square),
-        "high_overlap_filter": bool(args.high_overlap_filter),
-        "high_overlap_thresh": args.high_overlap_thresh,
-        "nms_thresh": args.nms_thresh,
-        "max_prompts_per_image": args.max_prompts_per_image,
-        "save_debug": False,
-    }
-    if args.config:
-        cfg = load_config(args.config)
-        lab_cfg.update(cfg.get("teacher", {}).get("prompt_generator", {}).get("lab_cc_boxes", {}))
-    return lab_cfg
-
-
 def _aggregate_stats(per_image_stats: Iterable[Dict[str, float]]) -> Dict[str, float]:
     stats = list(per_image_stats)
     total_gt = sum(item["gt_count"] for item in stats)
@@ -168,33 +145,16 @@ def _draw_pred_boxes(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate Lab-CC prompt boxes over all images in COCO GT")
-    parser.add_argument("--gt-json", default='../data/cdw_classify/dataset_seg/annotations/instances_test.json', help="COCO GT json path")
-    parser.add_argument("--images-root", default='../data/cdw_classify/dataset_seg/images/test', help="Image root directory")
-    parser.add_argument("--config", default="configs/teacher/teacher_default.yaml", help="Optional config YAML to read lab_cc params")
+    parser.add_argument("--gt-json", default=r'D:/zhangrun/project/PointCould4AggGradation\dataset/18-railway-ballast-particles\data\photos_of_ballast_particles\particle_01/GT-annotations/annotations.json', help="COCO GT json path")
+    parser.add_argument("--images-root", default=r'D:/zhangrun/project/PointCould4AggGradation\dataset/18-railway-ballast-particles\data\photos_of_ballast_particles\particle_01/images', help="Image root directory")
+    parser.add_argument("--config", default="configs/teacher/teacher_default.yaml", help="Teacher config YAML")
     parser.add_argument("--iou-thrs", default="0.3,0.5,0.7", help="Comma-separated IoU thresholds")
-    parser.add_argument("--limit", type=int, default=1, help="Limit evaluated images; -1 means all")
+    parser.add_argument("--limit", type=int, default=-1, help="Limit evaluated images; -1 means all")
     parser.add_argument("--save-json", default="outputs/labcc/result.json", help="Optional path to save detailed results json")
     parser.add_argument("--save-vis-dir", default="outputs/labcc/", help="Optional directory to save predicted-box visualizations")
-    parser.add_argument("--vis-mode", choices=["raw", "white", "black"], default="white", help="Visualization mode")
+    parser.add_argument("--vis-mode", choices=["raw", "white", "black"], default="raw", help="Visualization mode")
     parser.add_argument("--vis-line-width", type=int, default=3, help="Visualization rectangle line width")
     parser.add_argument("--verbose-every", type=int, default=50, help="Log progress every N images")
-    parser.add_argument("--l-thresh-min", type=int, default=18)
-    parser.add_argument("--a-thresh", type=int, default=131)
-    parser.add_argument("--b-thresh", type=int, default=133)
-    parser.add_argument("--close-kernel", type=int, default=5)
-    parser.add_argument("--open-kernel", type=int, default=3)
-    parser.add_argument("--min-cc-area", type=int, default=1200)
-    parser.add_argument("--min-box-w", type=int, default=100)
-    parser.add_argument("--min-box-h", type=int, default=100)
-    parser.add_argument("--force-square", type=lambda x: str(x).lower() in {"1", "true", "yes", "y"}, default=True)
-    parser.add_argument(
-        "--high-overlap-filter",
-        type=lambda x: str(x).lower() in {"1", "true", "yes", "y"},
-        default=False,
-    )
-    parser.add_argument("--high-overlap-thresh", type=float, default=0.9)
-    parser.add_argument("--nms-thresh", type=float, default=0.7)
-    parser.add_argument("--max-prompts-per-image", type=int, default=100)
     return parser.parse_args()
 
 
@@ -217,7 +177,11 @@ def main() -> None:
     if args.limit > 0:
         images = images[: args.limit]
 
-    generator = LabCCBoxPromptGenerator(_build_labcc_cfg(args))
+    cfg = load_config(args.config)
+    prompt_cfg = cfg.get("teacher", {}).get("prompt_generator", {})
+    if str(prompt_cfg.get("type", "")).lower() != "lab_cc_boxes":
+        raise ValueError("eval_labcc_prompt_boxes.py requires teacher.prompt_generator.type=lab_cc_boxes")
+    generator = build_prompt_generator(prompt_cfg)
     images_root = Path(args.images_root)
     vis_dir = Path(args.save_vis_dir) if str(args.save_vis_dir).strip() else None
     if vis_dir is not None:
@@ -288,7 +252,7 @@ def main() -> None:
 
     print(f"evaluated_images={len(all_details)} missing_images={missing_images} zero_pred_images={zero_pred_images}")
     print("Lab-CC params:")
-    print(json.dumps(_build_labcc_cfg(args), ensure_ascii=False, indent=2))
+    print(json.dumps(prompt_cfg, ensure_ascii=False, indent=2))
 
     summary: Dict[str, Any] = {
         "evaluated_images": len(all_details),

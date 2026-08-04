@@ -1,4 +1,4 @@
-experiment:
+﻿experiment:
   name: distill_default
   output_dir: outputs/distill_default
   seed: 42
@@ -7,15 +7,15 @@ experiment:
 
 data:
   teacher:
-    source: images
-    root_dir:
-    images_dir: images_test
-    gt_json: "annotations/instances_test.json"
+    source: images  
+    root_dir: ../data/cdw_classify/dataset_seg
+    images_dir: images/test
+    gt_json: "annotations/instances_test.json"  
     batch_size: 1
     num_workers: 0
     shuffle: false
     allow_empty: false
-  train:  # student
+  train:  # student 
     source: offline
     root_dir: ../data/cdw_classify/dataset_seg/
     images_dir: images/val
@@ -25,7 +25,7 @@ data:
     num_workers: 0
     shuffle: true
     allow_empty: false
-    fallback_to_dummy: false
+    fallback_to_dummy: true
     dummy:
       num_images: 8
       image_size: [256, 256]
@@ -46,7 +46,7 @@ data:
     num_workers: 0
     transforms:
       to_float: true
-      resize: null
+      resize: null  
       mean:  null  # [0.485, 0.456, 0.406]
       std:  null  # [0.229, 0.224, 0.225]
     coco:
@@ -82,6 +82,13 @@ teacher:
   mode: offline
   prompt_generator:
     type: lab_cc_boxes  # sam2_auto or canny_boxes or watershed_boxes or lab_cc_boxes
+    max_boxes_per_image: 1
+    box_refinement:
+      enabled: true
+      x_negative_ratio: 0.10
+      x_positive_ratio: 0.00
+      y_negative_ratio: 0.00
+      y_positive_ratio: 0.10
     canny_boxes:
       blur_kernel: 7
       canny_low: 50
@@ -125,13 +132,13 @@ teacher:
         chroma_max: 12.0
       close_kernel: 5
       open_kernel: 3
-      min_cc_area: 1500
-      min_box_w: 100
-      min_box_h: 100
-      force_square: true
-      high_overlap_filter: false
+      min_cc_area: 1500  # 1500
+      min_box_w: 100  # 100
+      min_box_h: 100  # 100
+      force_square: true  # true
+      high_overlap_filter: true  # true
       high_overlap_thresh: 0.9
-      nms_thresh: 0.7
+      nms_thresh: 0.7  # 0.7
       max_prompts_per_image: 200
       save_debug: false
       debug_dir: ./debug/lab_cc_prompts
@@ -160,7 +167,7 @@ teacher:
     multimask_output: true
     box_prompt_multimask_output: false
     output_mode: binary_mask
-    img_downsample: false
+    img_downsample: false  # 鍥惧儚杩涘叆 SAM 鍓嶄笅閲囨牱
     img_downsample_factor: 4.0
   postprocess:
     enabled: true
@@ -188,7 +195,7 @@ teacher:
         max_aspect_ratio: 8.0
         min_compactness: 0.005
       - name: nms
-        enabled: true
+        enabled: false
         method: mask
         iou_thresh: 0.85
   classifier:
@@ -196,8 +203,8 @@ teacher:
     type: dinov3
     backend: segment_cdw
     score_threshold: 0.0
-    margin_ratio: 0.1
-    combine_score: mul
+    margin_ratio: 0.1 # 鎻愬彇patch鏃跺€欑殑澶栨墿瀹藉害
+    combine_score: mul # 鏄惁涓巑ask鍒嗘暟杩涜鏁村悎
     model:
       checkpoint: "reseresnext50_32x4d_0_12epochs_accuracy0.967_weights.pth"
       num_classes: 4
@@ -219,13 +226,13 @@ teacher:
         k: 5
         metric: cosine
         weights_mode: distance
-        database_csv: "src/matmatch2real/teacher/database_knn.csv"
+        database_csv: "src/sam2real/teacher/database_knn.csv"
         image_col: image
         path_col: path
         label_col: label
         feature_prefix: feat
       prototype:
-        prototype_pth: "src/matmatch2real/teacher/class_prototypes.pth"
+        prototype_pth: "lib/class_prototypes.pth"
         score_mode: softmax
         softmax_temperature: 1.0
   reliability:
